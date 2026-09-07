@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07000f">
+<title>NOVA PONG // NEON RUN</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07000f;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+body{touch-action:none}canvas{display:block;width:100%;height:100%;touch-action:none}
+#menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 40%,#18002d 0,#07000f 55%,#020006 100%);z-index:2}
+.panel{width:min(90vw,620px);padding:35px 25px;border:1px solid #b35cff66;box-shadow:0 0 35px #a020ff33,inset 0 0 30px #a020ff0e;background:#090014cc;backdrop-filter:blur(8px)}
+.logo{font-size:clamp(42px,10vw,82px);font-weight:1000;letter-spacing:.08em;color:#7df9ff;text-shadow:0 0 8px #7df9ff,0 0 28px #7df9ff,8px 0 #ff2aa8}
+.sub{letter-spacing:.35em;color:#ff4db8;margin:6px 0 30px;font-size:12px}
+button{font:inherit;font-weight:900;letter-spacing:.12em;border:1px solid #7df9ff;background:#07151d;color:#7df9ff;padding:15px 35px;margin:7px;cursor:pointer;box-shadow:0 0 15px #00eaff55}
+button:active{transform:scale(.96)}.small{font-size:12px;opacity:.6;margin-top:18px}
+#hud{position:fixed;top:max(12px,env(safe-area-inset-top));left:0;right:0;display:none;justify-content:space-between;padding:0 20px;pointer-events:none;text-shadow:0 0 10px #7df9ff}
+.score{font-size:32px;font-weight:1000}.label{font-size:10px;letter-spacing:.2em;opacity:.7}
+#power{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.2em;color:#7df9ff;opacity:.75}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div><div class="label">PLAYER</div><div id="ps" class="score">0</div></div><div style="text-align:right"><div class="label">CYBER-AI</div><div id="as" class="score">0</div></div></div>
+<div id="power"></div>
+<div id="menu"><div class="panel">
+<div class="logo">NOVA PONG</div><div class="sub">NEON RUN // 01</div>
+<button id="play">▶ PLAY</button>
+<button id="hard">AI: NORMAL</button>
+<div class="small">DRAG YOUR FINGER TO PILOT THE NEON PADDLE<br>FIRST TO 7 • POWER CORES CHARGE DURING RALLIES</div>
+</div></div>
+<script>
+const c=document.getElementById('c'),g=c.getContext('2d'),menu=document.getElementById('menu'),hud=document.getElementById('hud');
+const ps=document.getElementById('ps'),as=document.getElementById('as'),power=document.getElementById('power');
+let W,H,D,mode=1,playing=false,pScore=0,aScore=0,playerY,aiY,ball,particles=[],cores=[],shake=0,last=0;
+const $=id=>document.getElementById(id);
+function resize(){D=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*D;c.height=H*D;g.setTransform(D,0,0,D,0,0);playerY=playerY||H/2;aiY=H/2}
+addEventListener('resize',resize);resize();
+
+function resetBall(dir){ball={x:W/2,y:H/2,vx:dir*(5+Math.random()*1.5),vy:(Math.random()-.5)*7,r:9,trail:[]};}
+function spark(x,y,n=12){for(let i=0;i<n;i++){let a=Math.random()*Math.PI*2,s=1+Math.random()*5;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:30+Math.random()*25})}}
+function rect(x,y,w,h){g.fillRect(x,y,w,h)}
+function drawGlowRect(x,y,w,h,fill,glow){g.save();g.shadowBlur=20;g.shadowColor=glow;g.fillStyle=fill;g.fillRect(x,y,w,h);g.restore()}
+function draw(){
+ g.clearRect(0,0,W,H);
+ // cyberpunk skyline
+ g.fillStyle='#030007';g.fillRect(0,0,W,H);
+ for(let i=0;i<22;i++){let bw=35+(i*29)%80,bh=50+(i*71)%Math.max(100,H*.45),x=i*(W/21)-10;g.fillStyle=i%3?'#0b0715':'#11051b';g.fillRect(x,H-bh,bw,bh);for(let yy=H-bh+12;yy<H-10;yy+=18){if((i+yy)%3) {g.fillStyle='#35eaff55';g.fillRect(x+7,yy,5,3)}}}
+ // grid
+ g.strokeStyle='#a72cff22';g.lineWidth=1;for(let y=H*.62;y<H;y+=28){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}for(let x=0;x<W;x+=45){g.beginPath();g.moveTo(W/2,H*.58);g.lineTo(x,H);g.stroke()}
+ g.setLineDash([8,18]);g.strokeStyle='#ff2aa855';g.lineWidth=2;g.beginPath();g.moveTo(W/2,90);g.lineTo(W/2,H-20);g.stroke();g.setLineDash([]);
+ // particles
+ for(const q of particles){g.globalAlpha=Math.max(0,q.life/55);g.fillStyle='#7df9ff';g.fillRect(q.x,q.y,3,3)}g.globalAlpha=1;
+ // ball trail
+ if(ball) for(let i=ball.trail.length-1;i>=0;i--){let q=ball.trail[i],a=(i+1)/ball.trail.length*.35;g.globalAlpha=a;g.fillStyle='#7df9ff';g.beginPath();g.arc(q.x,q.y,ball.r*(a+.2),0,7);g.fill()}g.globalAlpha=1;
+ if(ball){g.save();g.shadowBlur=30;g.shadowColor='#7df9ff';g.fillStyle='#eaffff';g.beginPath();g.arc(ball.x,ball.y,ball.r,0,7);g.fill();g.restore()}
+ let ph=110,py=playerY-ph/2,ay=aiY-ph/2;
+ drawGlowRect(24,py,13,ph,'#7df9ff','#00eaff');drawGlowRect(W-37,ay,13,ph,'#ff2aa8','#ff168f');
+ // power cores
+ for(const q of cores){g.save();g.translate(q.x,q.y);g.rotate(q.rot);g.shadowBlur=18;g.shadowColor='#ffe66d';g.fillStyle='#ffe66d';g.fillRect(-7,-7,14,14);g.restore()}
+ if(shake){g.globalAlpha=.12;g.fillStyle='#fff';g.fillRect(0,0,W,H);g.globalAlpha=1}
+}
+function update(t){
+ let dt=Math.min((t-last)/16.67,2);last=t;
+ if(playing){
+  // AI difficulty
+  let follow=mode===0?.055:mode===1?.075:.105;
+  aiY+=(ball.y-aiY)*follow*dt;aiY=Math.max(55,Math.min(H-55,aiY));
+  ball.trail.unshift({x:ball.x,y:ball.y});if(ball.trail.length>7)ball.trail.pop();
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  if(ball.y<ball.r||ball.y>H-ball.r){ball.vy*=-1;ball.y=Math.max(ball.r,Math.min(H-ball.r,ball.y));spark(ball.x,ball.y,7)}
+  let py=playerY-55,ay=aiY-55;
+  if(ball.x-ball.r<37&&ball.x>24&&ball.y>py&&ball.y<py+110){ball.x=47;let hit=(ball.y-(py+55))/55;ball.vx=Math.abs(ball.vx)*1.035;ball.vy=hit*8;spark(38,ball.y,16)}
+  if(ball.x+ball.r>W-37&&ball.x<W-24&&ball.y>ay&&ball.y<ay+110){ball.x=W-47;let hit=(ball.y-(ay+55))/55;ball.vx=-Math.abs(ball.vx)*1.035;ball.vy=hit*8;spark(W-38,ball.y,16)}
+  if(Math.random()<.0018&&cores.length<1)cores.push({x:W*.2+Math.random()*W*.6,y:100+Math.random()*(H-180),rot:0});
+  for(const q of cores)q.rot+=.06*dt;
+  for(let i=cores.length-1;i>=0;i--)if(Math.hypot(ball.x-cores[i].x,ball.y-cores[i].y)<28){spark(cores[i].x,cores[i].y,25);ball.vx*=1.28;ball.vy*=1.18;power.textContent='⚡ OVERDRIVE CORE +28% SPEED';setTimeout(()=>power.textContent='',1200);cores.splice(i,1);shake=8}
+  if(ball.x<-30){aScore++;spark(0,ball.y,35);if(aScore>=7)finish('CYBER-AI WINS');else resetBall(1)}
+  if(ball.x>W+30){pScore++;spark(W,ball.y,35);if(pScore>=7)finish('YOU BROKE THE GRID 🔥');else resetBall(-1)}
+ }
+ for(let i=particles.length-1;i>=0;i--){let q=particles[i];q.x+=q.vx;q.y+=q.vy;q.vx*=.97;q.vy*=.97;q.life-=dt;if(q.life<=0)particles.splice(i,1)}
+ shake=Math.max(0,shake-dt);
+ draw();requestAnimationFrame(update);
+}
+function start(){pScore=aScore=0;particles=[];cores=[];playerY=H/2;aiY=H/2;resetBall(Math.random()<.5?1:-1);playing=true;menu.style.display='none';hud.style.display='flex';ps.textContent=0;as.textContent=0}
+function finish(msg){playing=false;setTimeout(()=>{if(confirm(msg+'\\n\\nRun it back?'))start();else{menu.style.display='flex';hud.style.display='none'}},80)}
+$('play').onclick=start;
+$('hard').onclick=()=>{mode=(mode+1)%3;$('hard').textContent='AI: '+['EASY','NORMAL','NIGHTMARE'][mode]}
+c.addEventListener('pointerdown',e=>{playerY=e.clientY;c.setPointerCapture(e.pointerId)});
+c.addEventListener('pointermove',e=>{if(playing)playerY=Math.max(55,Math.min(H-55,e.clientY))});
+requestAnimationFrame(update);
+</script>
+</body></html>
